@@ -1,0 +1,98 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: tcc-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-tcc}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-tcc}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - tcc-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  ingest-service:
+    build:
+      context: .
+      dockerfile: services/ingest-service/Dockerfile
+    container_name: tcc-ingest-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      SERVICE_NAME: ingest-service
+      EVENT_BUS_DRIVER: rabbitmq
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tcc}:${RABBITMQ_PASS:-tcc}@rabbitmq:5672
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_TELEMETRY_TOPIC: sensors/+/telemetry
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - tcc-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  persistence-service:
+    build:
+      context: .
+      dockerfile: services/persistence-service/Dockerfile
+    container_name: tcc-persistence-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+      SERVICE_NAME: persistence-service
+      EVENT_BUS_DRIVER: rabbitmq
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-tcc}:${RABBITMQ_PASS:-tcc}@rabbitmq:5672
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-tcc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tcc}
+      POSTGRES_DB: ${POSTGRES_DB:-tcc_monitoring}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-tcc-super-secret-token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-tcc-ufba}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    networks:
+      - tcc-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  tcc-network:
+    name: tcc-network
+    driver: bridge

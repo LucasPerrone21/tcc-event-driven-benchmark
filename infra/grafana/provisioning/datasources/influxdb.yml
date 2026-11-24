@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB-TCC
+    type: influxdb
+    uid: influxdb-tcc
+    access: proxy
+    url: http://influxdb:8086
+    isDefault: true
+    editable: true
+    jsonData:
+      version: Flux
+      organization: tcc-ufba
+      defaultBucket: telemetry
+      tlsSkipVerify: true
+    secureJsonData:
+      token: tcc-super-secret-token
